@@ -32,7 +32,7 @@ node ndhmd-agent.mjs --app ../dist/index.html
 | `--origin URL` | 허용할 페이지 출처(여러 번 가능) |
 | `--work 폴더` | 임시 작업 폴더. 한글이 없는 경로 권장 |
 | `--timeout 초` | 컴파일 제한 시간(기본 300) |
-| `--shell-escape off\|restricted\|on` | 기본 `restricted`(TeX Live 기본값). minted를 쓰면 `on` |
+| `--shell-escape off\|restricted\|on` | 기본 `restricted`(TeX Live 기본값). shell escape가 필요할 때 `on`으로 켭니다 |
 | `--keep N` | 남겨 둘 최근 작업 수(기본 3) |
 | `--max-mb N` | 요청 크기 상한(기본 100) |
 | `--token 값` | 연결 코드를 직접 지정 |

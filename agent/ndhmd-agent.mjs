@@ -57,7 +57,7 @@ const HELP = `ndhmd-agent ${VERSION} — ndhmd 웹 작업대용 로컬 컴파일
   --work 폴더           임시 작업 폴더 (기본: 시스템 임시 폴더/ndhmd-agent). 한글이 없는 경로를 권합니다.
   --timeout 초          컴파일 제한 시간 (기본 300)
   --shell-escape 모드   off | restricted | on (기본 restricted = TeX Live 기본값).
-                        minted 같은 패키지가 필요하면 on. 웹 쪽에서는 바꿀 수 없습니다.
+                        shell escape가 필요할 때 on. 웹 쪽에서는 바꿀 수 없습니다.
   --keep N              남겨 둘 최근 작업 수 (기본 3)
   --max-mb N            요청 크기 상한(MB, 기본 100)
   --token 값            연결 코드를 직접 정합니다(기본: ~/.ndhmd-agent/token 에 저장된 무작위 값).
@@ -288,7 +288,7 @@ async function main() {
     if (opt.app) console.log(`  바로 열기 ${base}#token=${token}`);
     console.log(`  latexmk   ${t.latexmk || "찾지 못했습니다 — TeX Live/MiKTeX 설치와 PATH 를 확인하십시오"}`);
     console.log(`  엔진      ` + Object.entries(t.engines).map(([k, v]) => k + (v ? " ✓" : " ✗")).join("  "));
-    console.log(`  shell-escape ${opt.shellEscape}${opt.shellEscape === "restricted" ? "  (minted 등은 --shell-escape on 이 필요합니다)" : ""}`);
+    console.log(`  shell-escape ${opt.shellEscape}${opt.shellEscape === "restricted" ? "  (shell escape가 필요할 때 --shell-escape on 으로 켭니다)" : ""}`);
     console.log(`  작업 폴더 ${opt.work}`);
     if (/[^\x20-\x7e]/.test(opt.work)) console.log("  ! 작업 폴더 경로에 한글 등이 있습니다. 일부 TeX 도구가 탈 수 있으니 --work 로 영문 경로를 권합니다.");
     if (opt.origins.length) console.log(`  허용 출처 ${opt.origins.join(", ")}`);
