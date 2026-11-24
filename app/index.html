@@ -1230,6 +1230,7 @@ Object.defineProperties(window.ndhmdWeb,{
 const RES_EXT=/\.(nmd|ya?ml|sty|cls|lbx|bst|bib|def|cfg|clo|fd|lua)$/i;
 const RES_TEX=/\.(sty|cls|lbx|bst|bib|def|cfg|clo|fd)$/i;
 const RES_HOME="https://xltxlvr.github.io/ndhmdwriter-webapp/resources/";
+let resErr="";
 let RS={on:false,dist:{},distVer:null,distFrom:null,user:{}};
 const resOkPath=p=>!!p&&!p.startsWith("/")&&!/(^|\/)\.\.?(\/|$)/.test(p)&&!/[\u0000-\u001f\\:*?"<>|]/.test(p)&&p.length<200;
 const resSave=(()=>{let t;return()=>{clearTimeout(t);t=setTimeout(async()=>{try{const db=await idb();db.transaction("kv","readwrite").objectStore("kv").put(RS,"res");}catch(e){}},400);};})();
@@ -1239,18 +1240,19 @@ async function resFetchDist(force){
   const bases=[], q=new URLSearchParams(location.search).get("res");
   if(q) bases.push(new URL(q,location.href).href.replace(/\/?$/,"/"));
   bases.push(new URL("../resources/",location.href).href, RES_HOME);
-  let err=null;
+  const errs=[];
   for(const b of bases){
     try{
       const r=await fetch(b+"manifest.json",{cache:"no-cache"}); if(!r.ok) throw new Error("manifest.json "+r.status);
       const m=await r.json(); if(!m||!Array.isArray(m.files)) throw new Error("manifest.json 형식 오류");
-      if(!force&&RS.distVer===m.version&&Object.keys(RS.dist).length) return "cache";
-      const files={};
-      await Promise.all(m.files.filter(f=>resOkPath(f.path)).map(async f=>{ const x=await fetch(b+f.path.split("/").map(encodeURIComponent).join("/")); if(!x.ok) throw new Error(f.path+" "+x.status); files[f.path]=await x.text(); }));
-      RS.dist=files; RS.distVer=m.version; RS.distFrom=b; return "fetched";
-    }catch(e){ err=e; }
+      if(!force&&RS.distVer===m.version&&Object.keys(RS.dist).length){ resErr=""; return "cache"; }
+      const files={}, bad=[];
+      await Promise.all(m.files.filter(f=>resOkPath(f.path)).map(async f=>{ try{ const x=await fetch(b+f.path.split("/").map(encodeURIComponent).join("/")); if(!x.ok) throw new Error("HTTP "+x.status); files[f.path]=await x.text(); }catch(e){ bad.push(f.path+" ("+(e&&e.message||e)+")"); } }));
+      if(bad.length) throw new Error("파일 "+bad.length+"개를 받지 못함: "+bad.slice(0,6).join(", ")+(bad.length>6?" 외":""));
+      RS.dist=files; RS.distVer=m.version; RS.distFrom=b; resErr=""; return "fetched";
+    }catch(e){ errs.push(b+" → "+(e&&e.message||e)); }
   }
-  throw err||new Error("배포 리소스를 받지 못했습니다");
+  resErr=errs.join("\n"); throw new Error(errs.length>1?"모든 주소에서 실패했습니다(자원 탭에 자세히 표시)":errs[0]);
 }
 /* 컴파일 때 에이전트로 보낼 보조 파일: 원고가 (간접으로라도) 이름을 언급한 .sty/.cls/.lbx/.bst/.bib 등. 작업공간 최상위에 평평하게 놓는다. */
 function resCompileFiles(texText){
@@ -1304,6 +1306,7 @@ function renderRes(){
   const note=(t)=>{ const d=document.createElement("div"); d.className="note"; d.textContent=t; return d; };
   el.appendChild(note("변환기가 이름만으로 찾는 설정 파일(setup: 헤더 .nmd, mapping: .yaml)과 컴파일에 쓰는 .sty·.cls·.lbx·.bst·.bib을 둡니다. 찾는 순서: 문서 옆(작업공간 최상위) → 내 리소스 → 배포 리소스 → 내장 기본 헤더. 이름만 쓰면 하위 폴더까지 얕은 곳부터 찾습니다."));
   el.appendChild(h("배포 리소스"));
+  if(resErr){ const d=document.createElement("div"); d.className="sum bad"; d.style.whiteSpace="pre-wrap"; d.style.wordBreak="break-all"; d.textContent="받지 못했습니다\n"+resErr+"\n\n(브라우저 개발자 도구 ▸ 네트워크에서 같은 주소가 어떻게 응답하는지 확인할 수 있습니다)"; el.appendChild(d); }
   const row=document.createElement("div"); row.className="resrow";
   const lab=document.createElement("label"); const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=RS.on; lab.appendChild(cb); lab.appendChild(document.createTextNode(" 연결"));
   cb.onchange=async()=>{ cb.disabled=true; RS.on=cb.checked; try{ if(RS.on){ const r=await resFetchDist(false); flash(r==="cache"?"배포 리소스를 연결했습니다(저장된 사본).":"배포 리소스를 받아 연결했습니다.",4000); } }catch(e){ RS.on=false; flash("배포 리소스를 받지 못했습니다: "+(e&&e.message||e),8000); } resSave(); renderRes(); };
