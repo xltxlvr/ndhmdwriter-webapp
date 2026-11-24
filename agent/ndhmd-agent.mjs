@@ -76,7 +76,7 @@ const safeEq = (a, b) => { const x = Buffer.from(String(a)), y = Buffer.from(Str
 
 /* ───────────── 요청 검사 ───────────── */
 const ENGINES = { xelatex: "-pdfxe", lualatex: "-pdflua", pdflatex: "-pdf" };
-const ALLOWED_EXT = new Set([".tex", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf", ".eps", ".webp"]);
+const ALLOWED_EXT = new Set([".tex", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".svg", ".pdf", ".eps", ".webp", ".sty", ".cls", ".lbx", ".bst", ".bib", ".def", ".cfg", ".clo", ".fd"]);
 function cleanRel(p) {
   if (typeof p !== "string" || !p || p.length > 240) return null;
   if (/[\u0000-\u001f\\:*?"<>|]/.test(p) || p.startsWith("/") || /(^|\/)\.\.?(\/|$)/.test(p) || p.includes("//") || p.endsWith("/")) return null;

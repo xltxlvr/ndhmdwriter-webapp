@@ -43,7 +43,7 @@ node ndhmd-agent.mjs --app ../dist/index.html
 - `Origin`이 있는 요청은 허용 목록에 있어야 합니다.
 - 연결 코드(Bearer 토큰)가 없으면 `/hello`의 기본 정보 외에는 아무것도 하지 않습니다.
 - 실행하는 명령은 `latexmk` 하나뿐이고, 인자는 에이전트가 엔진(xelatex·lualatex·pdflatex)에서 직접 만듭니다. 요청이 보낸 인자는 받지 않습니다.
-- 파일 경로는 상대 경로만, `..`·절대 경로·역슬래시·제어문자는 거절합니다. 확장자는 `.tex .png .jpg .jpeg .gif .bmp .svg .pdf .eps .webp`만 허용합니다.
+- 파일 경로는 상대 경로만, `..`·절대 경로·역슬래시·제어문자는 거절합니다. 확장자는 `.tex .png .jpg .jpeg .gif .bmp .svg .pdf .eps .webp`와 보조 파일 `.sty .cls .lbx .bst .bib .def .cfg .clo .fd`만 허용합니다(리소스의 .sty 등은 원고가 이름을 언급한 것만 작업 폴더 최상위로 보냅니다).
 - 한 번에 컴파일 하나만 합니다(진행 중이면 409). 연결이 끊기거나 시간이 지나면 자식 프로세스를 통째로 끝냅니다.
 - shell-escape는 에이전트를 시작할 때만 정합니다. 웹 페이지는 켤 수 없습니다.
 

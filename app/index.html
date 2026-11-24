@@ -239,6 +239,7 @@ dialog .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
       <button role="tab" aria-selected="false" data-p="pPdf">PDF</button>
       <button role="tab" aria-selected="false" data-p="pSync">줄 되짚기</button>
       <button role="tab" aria-selected="false" data-p="pImg" id="tImg">그림</button>
+      <button role="tab" aria-selected="false" data-p="pRes" id="tRes">자원</button>
     </div>
     <div class="pane on" id="pLog"><div class="note">위의 변환·점검 단추를 누르면 결과가 여기에 나옵니다.<span class="fullonly"> PDF 컴파일은 로컬 에이전트가 합니다. 설정에서 연결한 뒤 "PDF 컴파일"을 누르십시오.</span></div></div>
     <div class="pane toc" id="pToc"></div>
@@ -262,6 +263,7 @@ dialog .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
       <div id="syncRes" class="note"></div>
     </div>
     <div class="pane" id="pImg"></div>
+    <div class="pane" id="pRes"></div>
   </section>
 </main>
 <dialog id="dlg"><p id="dlgMsg"></p><div class="btns" id="dlgBtns"></div></dialog>
@@ -808,17 +810,19 @@ async function ingest(sets){
   const all=[];
   for(const s of sets){ const keep=[]; for(const it of s.items){ if(/\.zip$/i.test(it.path)&&!it.fromZip) all.push(await expandZip(it,report)); else keep.push(it); } all.push({items:keep,strip:s.strip}); }
   // 2. 경로를 정리하고 분류한다
-  const cand=[];
+  const cand=[], resItems=[];
   for(const s of all){
     let items=s.items.map(i=>({...i,path:normPath(i.path)})).filter(i=>{ if(!i.path) return false; if(JUNK(i.path)) return false; return true; });
     if(s.strip) stripCommon(items);
     for(const i of items){
-      if(!i.path.includes("/")&&(EXT.test(i.path)||AUX.test(i.path))) cand.push({name:i.path,kind:"text",get:i.get,size:i.size});
+      if(/^resources\//i.test(i.path)&&RES_EXT.test(i.path)) resItems.push({path:i.path.replace(/^resources\//i,""),get:i.get,size:i.size});
+      else if(!i.path.includes("/")&&(EXT.test(i.path)||AUX.test(i.path))) cand.push({name:i.path,kind:"text",get:i.get,size:i.size});
       else if(IMG.test(i.path)) cand.push({name:i.path,kind:"bin",get:i.get,size:i.size});
       else report.skipped.push(i.path+(i.path.includes("/")&&(EXT.test(i.path)||AUX.test(i.path))?" — 하위 폴더의 원고는 가져오지 않습니다":" — 지원하지 않는 형식"));
     }
   }
-  if(!cand.length){ showReport(report); flash("가져올 수 있는 파일이 없습니다."); return; }
+  if(resItems.length){ const rr=await resIngest([{items:resItems,strip:false}]); report.notes.push("내 리소스 "+rr.added+"개 (zip의 resources/ 폴더)"); report.skipped.push(...rr.skipped); }
+  if(!cand.length){ showReport(report); flash(resItems.length?"내 리소스를 가져왔습니다.":"가져올 수 있는 파일이 없습니다."); return; }
   // 3. 같은 이름 처리
   const exists=c=>c.kind==="text"?c.name in ws:c.name in bin;
   const dup=cand.filter(exists); let mode="overwrite";
@@ -871,7 +875,7 @@ addEventListener("drop",async e=>{
 });
 
 /* ----- 내보내기 ----- */
-function allFiles(){ const f=[]; Object.keys(ws).sort().forEach(n=>f.push({name:n,data:enc8.encode(ws[n])})); Object.keys(bin).sort().forEach(n=>f.push({name:n,data:bin[n]})); return f; }
+function allFiles(){ const f=[]; Object.keys(ws).sort().forEach(n=>f.push({name:n,data:enc8.encode(ws[n])})); Object.keys(bin).sort().forEach(n=>f.push({name:n,data:bin[n]})); Object.keys(RS.user).sort().forEach(n=>f.push({name:"resources/"+n,data:enc8.encode(RS.user[n])})); return f; }
 const actions={
   impFiles:()=>$("#fileIn").click(), impFolder:()=>$("#dirIn").click(),
   expZip:()=>{ const f=allFiles(); if(!f.length){ flash("내보낼 파일이 없습니다."); return; } if(download("ndhmd-workspace-"+stamp()+".zip",makeZip(f))){ lastExport=Date.now(); dirtySince=false; renderFoot(); saveWs(); flash("zip으로 내보냈습니다("+f.length+"개).",6000); } },
@@ -970,6 +974,19 @@ def run_tool(script, args):
     finally:
         sys.stdout, sys.stderr, sys.argv = old
     return json.dumps({'code': code, 'out': out.getvalue()})
+def setres(files):
+    d = json.loads(files)
+    shutil.rmtree('/resources', ignore_errors=True)
+    dirs = []
+    for sub in ('user', 'dist'):
+        m = d.get(sub) or {}
+        if m:
+            for k, v in m.items():
+                p = '/resources/%s/%s' % (sub, k); os.makedirs(os.path.dirname(p), exist_ok=True)
+                with open(p, 'w', encoding='utf-8') as f: f.write(v)
+            dirs.append('/resources/' + sub)
+    dirs.append('/builtin')
+    os.environ['NDHMARKDOWN_RESOURCE_DIRECTORY'] = os.pathsep.join(dirs)
 def read(name):
     p = '/work/' + name
     return open(p, encoding='utf-8').read() if os.path.exists(p) else None
@@ -985,8 +1002,8 @@ function initEngine(){
     const t0=performance.now();
     await loadScript(base+"pyodide.js");
     py=await loadPyodide({indexURL:base});
-    py.FS.mkdirTree("/tools"); py.FS.mkdirTree("/lib/yaml"); py.FS.mkdirTree("/work");
-    for(const [k,v] of Object.entries(PYFILES.tools)) py.FS.writeFile("/tools/"+k,v);
+    py.FS.mkdirTree("/tools"); py.FS.mkdirTree("/builtin"); py.FS.mkdirTree("/lib/yaml"); py.FS.mkdirTree("/work");
+    for(const [k,v] of Object.entries(PYFILES.tools)) py.FS.writeFile((/\.nmd$/.test(k)?"/builtin/":"/tools/")+k,v);   // 내장 기본 헤더는 맨 뒤 순위(/builtin)
     for(const [k,v] of Object.entries(PYFILES.yaml)) py.FS.writeFile("/lib/yaml/"+k,v);
     py.runPython("import sys; sys.path[:0]=['/lib','/tools']\n"+RUNNER);
     setEngine("변환 엔진 준비됨 ("+((performance.now()-t0)/1000).toFixed(1)+"초)","ready");
@@ -998,7 +1015,9 @@ async function runTool(script,args,root){
   const files={}; Object.keys(ws).forEach(k=>files[k]=ws[k]);
   const g=py.globals; g.get("reset")(JSON.stringify(files));
   for(const [k,v] of Object.entries(bin)){ const d=k.split("/").slice(0,-1).join("/"); if(d) py.FS.mkdirTree("/work/"+d); py.FS.writeFile("/work/"+k,v); }
+  g.get("setres")(JSON.stringify(resPayload()));
   const r=JSON.parse(g.get("run_tool")(script,JSON.stringify(args)));
+  if(!RS.on&&/(setup|매핑) 파일을 찾을 수 없습니다/.test(r.out)) r.out+="\n[웹] 배포 리소스가 연결되어 있지 않습니다. '자원' 탭에서 연결하거나, 그 파일을 올려 주십시오.\n";
   const stem=root.replace(/\.[^.]+$/,""); const rd=n=>g.get("read")(n)??null;
   return {...r,tex:rd(stem+".tex"),sync:rd(stem+".nmdsync"),html:rd(stem+".html"),css:rd(stem+"_simple.css"),stem};
 }
@@ -1111,6 +1130,8 @@ async function agentBootstrap(){
 function buildCompileBody(texText,stem){
   const files=[{path:stem+".tex",b64:b64(enc8.encode(texText))}];
   for(const n of Object.keys(bin).sort()) files.push({path:n,b64:b64(bin[n])});
+  const seen=new Set(files.map(f=>f.path.toLowerCase())); const ex=resCompileFiles(texText);
+  for(const n of Object.keys(ex).sort()) if(!seen.has(n.toLowerCase())){ seen.add(n.toLowerCase()); files.push({path:n,b64:b64(enc8.encode(ex[n]))}); }
   return JSON.stringify({version:1,root:bookRoot(cur),stem,engine:settings.engine,latexmk:[ENGINES[settings.engine],"-interaction=nonstopmode","-synctex=1"],texFile:stem+".tex",files});
 }
 
@@ -1197,6 +1218,108 @@ Object.defineProperties(window.ndhmdWeb,{
   compilePdf:{value:compilePdf}, agentHello:{value:agentHello},
   loadSync:{value:async function(){ if(!lastPdf||!lastPdf.synctex) return null; if(!lastPdf.h) lastPdf.h={S:await ndhmdSync.readSynctex(lastPdf.synctex),E:ndhmdSync.loadSyncInfo(lastPdf.sync||"")}; return lastPdf.h; }}
 });
+
+/* ===== 리소스: 배포 리소스(사이트에서 받음) + 내 리소스(올린 것) =====
+   변환할 때 가상 폴더 /resources/user, /resources/dist 에 풀고 NDHMARKDOWN_RESOURCE_DIRECTORY 로 알려 준다.
+   찾는 순서: 문서 옆(작업공간 최상위) → 내 리소스 → 배포 리소스 → 내장 기본 헤더. */
+const RES_EXT=/\.(nmd|ya?ml|sty|cls|lbx|bst|bib|def|cfg|clo|fd|lua)$/i;
+const RES_TEX=/\.(sty|cls|lbx|bst|bib|def|cfg|clo|fd)$/i;
+const RES_HOME="https://xltxlvr.github.io/ndhmdwriter-webapp/resources/";
+let RS={on:false,dist:{},distVer:null,distFrom:null,user:{}};
+const resOkPath=p=>!!p&&!p.startsWith("/")&&!/(^|\/)\.\.?(\/|$)/.test(p)&&!/[\u0000-\u001f\\:*?"<>|]/.test(p)&&p.length<200;
+const resSave=(()=>{let t;return()=>{clearTimeout(t);t=setTimeout(async()=>{try{const db=await idb();db.transaction("kv","readwrite").objectStore("kv").put(RS,"res");}catch(e){}},400);};})();
+async function resLoad(){ try{ const db=await idb(); const v=await new Promise(r=>{ const q=db.transaction("kv").objectStore("kv").get("res"); q.onsuccess=()=>r(q.result||null); q.onerror=()=>r(null); }); if(v&&typeof v==="object") RS={on:!!v.on,dist:v.dist||{},distVer:v.distVer||null,distFrom:v.distFrom||null,user:v.user||{}}; }catch(e){} }
+function resPayload(){ return {user:RS.user,dist:RS.on?RS.dist:{}}; }
+async function resFetchDist(force){
+  const bases=[], q=new URLSearchParams(location.search).get("res");
+  if(q) bases.push(new URL(q,location.href).href.replace(/\/?$/,"/"));
+  bases.push(new URL("../resources/",location.href).href, RES_HOME);
+  let err=null;
+  for(const b of bases){
+    try{
+      const r=await fetch(b+"manifest.json",{cache:"no-cache"}); if(!r.ok) throw new Error("manifest.json "+r.status);
+      const m=await r.json(); if(!m||!Array.isArray(m.files)) throw new Error("manifest.json 형식 오류");
+      if(!force&&RS.distVer===m.version&&Object.keys(RS.dist).length) return "cache";
+      const files={};
+      await Promise.all(m.files.filter(f=>resOkPath(f.path)).map(async f=>{ const x=await fetch(b+f.path.split("/").map(encodeURIComponent).join("/")); if(!x.ok) throw new Error(f.path+" "+x.status); files[f.path]=await x.text(); }));
+      RS.dist=files; RS.distVer=m.version; RS.distFrom=b; return "fetched";
+    }catch(e){ err=e; }
+  }
+  throw err||new Error("배포 리소스를 받지 못했습니다");
+}
+/* 컴파일 때 에이전트로 보낼 보조 파일: 원고가 (간접으로라도) 이름을 언급한 .sty/.cls/.lbx/.bst/.bib 등. 작업공간 최상위에 평평하게 놓는다. */
+function resCompileFiles(texText){
+  const pool={}, add=m=>{ for(const [k,v] of Object.entries(m)) if(RES_TEX.test(k)) pool[k.split("/").pop()]=v; };
+  if(RS.on) add(RS.dist); add(RS.user);
+  const out={}; for(const n of Object.keys(ws)) if(/\.bib$/i.test(n)) out[n]=ws[n];
+  const texts=[texText,...Object.values(out)];
+  const mention=(stem)=>{ const re=new RegExp("(^|[^A-Za-z0-9_-])"+stem.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")+"([^A-Za-z0-9_-]|$)"); return texts.some(t=>re.test(t)); };
+  for(let ch=true;ch;){ ch=false; for(const [n,t] of Object.entries(pool)){ if(n in out||n in ws||n in bin) continue; if(mention(n.replace(/\.[^.]+$/,""))||mention(n)){ out[n]=t; texts.push(t); ch=true; } } }
+  return out;
+}
+/* ----- 올리기 ----- */
+async function resIngest(sets,rep){
+  rep=rep||{added:0,skipped:[],zips:[],over:[],notes:[]};
+  const all=[]; for(const s of sets){ const keep=[]; for(const it of s.items){ if(/\.zip$/i.test(it.path)&&!it.fromZip) all.push(await expandZip(it,rep)); else keep.push(it); } all.push({items:keep,strip:s.strip}); }
+  for(const s of all){
+    let items=s.items.map(i=>({...i,path:normPath(i.path)})).filter(i=>i.path&&!JUNK(i.path));
+    if(s.strip) stripCommon(items);
+    for(const i of items){
+      if(!RES_EXT.test(i.path)||!resOkPath(i.path)){ rep.skipped.push(i.path+" — 리소스 형식이 아님"); continue; }
+      let u; try{ u=await i.get(); }catch(e){ rep.skipped.push(i.path+" — "+e.message); continue; }
+      if(u.length>2*1024*1024){ rep.skipped.push(i.path+" — 2MB가 넘어 건너뜀"); continue; }
+      const d=decodeText(u); if(!d){ rep.skipped.push(i.path+" — 글자 인코딩을 읽지 못함"); continue; }
+      if(i.path in RS.user) rep.over.push(i.path);
+      RS.user[i.path]=d.text.replace(/\r\n?/g,"\n"); rep.added++;
+    }
+  }
+  resSave(); renderRes(); return rep;
+}
+/* ----- 화면 ----- */
+const resView=new Set();
+function resList(map,del){
+  const wrap=document.createElement("div"); wrap.className="reslist";
+  const names=Object.keys(map).sort();
+  if(!names.length){ wrap.innerHTML='<div class="note">없음</div>'; return wrap; }
+  for(const n of names){
+    const row=document.createElement("div"); row.className="resrow";
+    const k=(del?"u:":"d:")+n;
+    const a=document.createElement("a"); a.href="#"; a.textContent=n; a.title="내용 보기"; a.onclick=e=>{ e.preventDefault(); resView.has(k)?resView.delete(k):resView.add(k); renderRes(); };
+    row.appendChild(a);
+    const sz=document.createElement("span"); sz.className="ressz"; sz.textContent=(map[n].length/1024).toFixed(1)+" KB"; row.appendChild(sz);
+    if(del){ const b=document.createElement("button"); b.textContent="삭제"; b.onclick=()=>{ delete RS.user[n]; resView.delete(k); resSave(); renderRes(); }; row.appendChild(b); }
+    wrap.appendChild(row);
+    if(resView.has(k)){ const p=document.createElement("pre"); p.className="out"; p.style.maxHeight="240px"; p.textContent=map[n].slice(0,20000)+(map[n].length>20000?"\n…":""); wrap.appendChild(p); }
+  }
+  return wrap;
+}
+function renderRes(){
+  const el=$("#pRes"); if(!el) return; el.innerHTML="";
+  const h=(t)=>{ const d=document.createElement("div"); d.className="reshead"; d.textContent=t; return d; };
+  const note=(t)=>{ const d=document.createElement("div"); d.className="note"; d.textContent=t; return d; };
+  el.appendChild(note("변환기가 이름만으로 찾는 설정 파일(setup: 헤더 .nmd, mapping: .yaml)과 컴파일에 쓰는 .sty·.cls·.lbx·.bst·.bib을 둡니다. 찾는 순서: 문서 옆(작업공간 최상위) → 내 리소스 → 배포 리소스 → 내장 기본 헤더. 이름만 쓰면 하위 폴더까지 얕은 곳부터 찾습니다."));
+  el.appendChild(h("배포 리소스"));
+  const row=document.createElement("div"); row.className="resrow";
+  const lab=document.createElement("label"); const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=RS.on; lab.appendChild(cb); lab.appendChild(document.createTextNode(" 연결"));
+  cb.onchange=async()=>{ cb.disabled=true; RS.on=cb.checked; try{ if(RS.on){ const r=await resFetchDist(false); flash(r==="cache"?"배포 리소스를 연결했습니다(저장된 사본).":"배포 리소스를 받아 연결했습니다.",4000); } }catch(e){ RS.on=false; flash("배포 리소스를 받지 못했습니다: "+(e&&e.message||e),8000); } resSave(); renderRes(); };
+  row.appendChild(lab);
+  const rb=document.createElement("button"); rb.textContent="새로 받기"; rb.disabled=!RS.on; rb.onclick=async()=>{ rb.disabled=true; try{ await resFetchDist(true); flash("배포 리소스를 새로 받았습니다."); }catch(e){ flash("받지 못했습니다: "+(e&&e.message||e),8000); } resSave(); renderRes(); };
+  row.appendChild(rb);
+  const st=document.createElement("span"); st.className="ressz"; const nd=Object.keys(RS.dist).length; st.textContent=nd?(nd+"개 · 판 "+RS.distVer+(RS.on?"":" · 꺼짐")):"받은 적 없음"; row.appendChild(st);
+  el.appendChild(row);
+  if(RS.on&&nd) el.appendChild(resList(RS.dist,false));
+  el.appendChild(h("내 리소스 ("+Object.keys(RS.user).length+")"));
+  const r2=document.createElement("div"); r2.className="resrow";
+  const mk=(label,attrs)=>{ const i=document.createElement("input"); i.type="file"; i.multiple=true; i.hidden=true; Object.assign(i,attrs); i.onchange=async()=>{ const fs=[...i.files]; i.value=""; const rep=await resIngest([{items:fs.map(fileToItem),strip:!!attrs.webkitdirectory}]); resReport(rep); }; const b=document.createElement("button"); b.textContent=label; b.onclick=()=>i.click(); r2.appendChild(i); r2.appendChild(b); };
+  mk("파일·zip 올리기",{accept:".nmd,.yaml,.yml,.sty,.cls,.lbx,.bst,.bib,.def,.cfg,.clo,.fd,.lua,.zip"}); mk("폴더 올리기",{webkitdirectory:true});
+  el.appendChild(r2);
+  el.appendChild(resList(RS.user,true));
+}
+function resReport(r){ flash("내 리소스 "+r.added+"개를 넣었습니다"+(r.skipped.length?" (건너뜀 "+r.skipped.length+": "+r.skipped.slice(0,2).join(", ")+(r.skipped.length>2?" 외":"")+")":"")+".",7000); }
+(function(){
+  const s=document.createElement("style"); s.textContent=".reshead{font-weight:600;margin:12px 0 4px}.resrow{display:flex;gap:8px;align-items:center;padding:2px 0}.resrow a{flex:1;word-break:break-all}.ressz{color:#888;font-size:12px}.reslist{margin:4px 0}"; document.head.appendChild(s);
+  resLoad().then(renderRes);
+})();
 
 /* ===== PDF 보기: PDF.js(CDN)로 쪽을 직접 그린다 — 클릭 좌표를 알아야 synctex 되짚기를 할 수 있다 ===== */
 const PDFJS_VERSION="6.5.438";

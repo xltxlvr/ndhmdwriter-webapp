@@ -1,0 +1,73 @@
+{
+ "version": "35504024b20b",
+ "files": [
+  {
+   "path": "ABOUT.md",
+   "size": 1113
+  },
+  {
+   "path": "articlelike.nmd",
+   "size": 309
+  },
+  {
+   "path": "beamer/beamermd.nmd",
+   "size": 235
+  },
+  {
+   "path": "example/lshort-ko_example.yaml",
+   "size": 1204
+  },
+  {
+   "path": "extra/amsthm.yaml",
+   "size": 508
+  },
+  {
+   "path": "extra/defaultnoto.nmd",
+   "size": 327
+  },
+  {
+   "path": "extra/postit.yaml",
+   "size": 1001
+  },
+  {
+   "path": "kotex/articlekotex.nmd",
+   "size": 523
+  },
+  {
+   "path": "kotex/bookkotex.nmd",
+   "size": 520
+  },
+  {
+   "path": "kotex/reportkotex.nmd",
+   "size": 543
+  },
+  {
+   "path": "ksbib/bbl2bibitem.lua",
+   "size": 21088
+  },
+  {
+   "path": "ksbib/korean.lbx",
+   "size": 31075
+  },
+  {
+   "path": "ksbib/kskoreanbib.sty",
+   "size": 5019
+  },
+  {
+   "path": "oblivoirbook.nmd",
+   "size": 330
+  },
+  {
+   "path": "standard/article.nmd",
+   "size": 59
+  },
+  {
+   "path": "standard/book.nmd",
+   "size": 55
+  },
+  {
+   "path": "standard/report.nmd",
+   "size": 58
+  }
+ ]
+}
