@@ -58,6 +58,9 @@ main{flex:1;min-height:0;display:grid;grid-template-columns:240px minmax(320px,1
 .item.nmd .nm{color:var(--nmd)}
 .item.d1{margin-left:14px} .item.d2{margin-left:28px}
 .item.dropok{outline:2px dashed var(--accent)}
+.item.dropb{box-shadow:inset 0 3px 0 var(--accent)} .item.dropa{box-shadow:inset 0 -3px 0 var(--accent)}
+#dropRoot{display:none;position:sticky;bottom:0;margin:8px 0 0;padding:9px 8px;border:2px dashed var(--line);border-radius:6px;text-align:center;font-size:12px;color:var(--dim);background:var(--bg)}
+#drawer.dragging #dropRoot{display:block} #dropRoot.on{border-color:var(--accent);color:var(--accent);background:var(--sel)}
 .badge{font-size:11px;color:var(--dim)}
 .badge.warn{color:var(--warn)}
 .tag{font-size:11px;color:var(--accent)}
@@ -560,6 +563,7 @@ function renderDrawer(){
   if(idx.aux.length){ const s=document.createElement("div"); s.className="sect"; s.textContent="부속 파일 ("+idx.aux.length+")"; el.appendChild(s);
     idx.aux.filter(n=>!f||n.toLowerCase().includes(f.toLowerCase())).forEach(n=>{const d=document.createElement("div");d.className="item"+(n===cur?" cur":"");d.dataset.name=n;d.innerHTML='<span class="nm">'+esc(n)+'</span>';el.appendChild(d);}); }
   if(!el.children.length) el.innerHTML='<div class="hint">파일이 없습니다. "새 원고"나 "파일 가져오기"를 쓰십시오.</div>';
+  else { const r=document.createElement("div"); r.id="dropRoot"; r.textContent="↥ 여기에 놓으면 최상위로 꺼냅니다 (파일 사이에 놓으면 그 자리로)"; el.appendChild(r); }
   $("#count").textContent="원고 "+idx.names.length+"개";
 }
 
@@ -572,33 +576,57 @@ function rewriteIncludes(text,names){
   const block=[]; names.forEach((n,k)=>{ if(k) block.push(""); block.push("{{"+n+"}}"); });
   if(pos<0){ while(out.length&&out[out.length-1].trim()==="") out.pop(); out.push("",...block,""); }
   else out.splice(pos,0,...block);
-  return out.join("\n").replace(/\n{3,}/g,"\n\n");
+  return out.join("\n").replace(/\n{3,}/g,"\n\n").replace(/\n+$/,"\n");
 }
-function moveFile(name,target){
-  const info=idx.info; const me=info[name]; if(!me) return "원고만 끌 수 있습니다.";
-  let P=target; // null = 최상위로
+// pos: "in"(대상의 자식으로 맨 끝에) | "before"/"after"(대상과 같은 부모 아래, 대상의 앞/뒤) | "root"(최상위로 꺼내기)
+// 최상위 파일들의 순서는 {{}}로 정해지지 않으므로(이름순), 최상위 파일의 앞/뒤에 놓는 것은 곧 "꺼내기"다.
+function moveFile(name,target,pos){
+  pos=pos||(target?"in":"root");
+  const info=idx.info, me=info[name]; if(!me) return "원고만 끌 수 있습니다.";
+  let P=null, anchor=null;
+  if(pos!=="root"){
+    const T=info[target]; if(!T) return "원고 위로만 놓을 수 있습니다.";
+    if(target===name) return "자기 자신 위에는 놓을 수 없습니다.";
+    if(pos==="in"){ P=target; if(T.depth>=2) P=T.parent; }       // 하위 위에 놓으면 그 부모 아래 형제가 된다
+    else { P=T.parent; anchor=T.parent?target:null; }              // 앞/뒤: 대상의 형제 자리
+  }
   if(P){
     if(P===name) return "자기 자신에게는 넣을 수 없습니다.";
-    if(!info[P]) return "원고 위로만 놓을 수 있습니다.";
-    if(info[P].depth>=2) P=info[P].parent;       // 하위 위에 놓으면 형제가 된다
-    if(P===me.parent) return "이미 그 부모의 자식입니다.";
-    if(me.children.length) return "묶을 수 없습니다: 이미 자식을 가진 파일입니다.";
-    if(info[P].depth>=1 && false) return "";
-    if(info[P].parent && info[P].depth>=2) return "포함은 2단계까지만 지원됩니다.";
-  } else if(!me.parent) return "이미 최상위입니다.";
-  if(me.parent){ const old=me.parent; ws[old]=rewriteIncludes(ws[old],info[old].children.filter(c=>c!==name)); }
-  if(P){ ws[P]=rewriteIncludes(ws[P],[...info[P].children,name]); }
+    if(info[P].depth>=2) return "포함은 2단계까지만 지원됩니다.";
+    if(me.parent!==P&&me.children.length) return "묶을 수 없습니다: 이미 자식을 가진 파일입니다.";
+    const base=info[P].children.filter(c=>c!==name);
+    let at=base.length; if(anchor){ at=base.indexOf(anchor); if(at<0) at=base.length; else if(pos==="after") at++; }
+    const next=base.slice(0,at).concat([name],base.slice(at));
+    if(me.parent===P&&next.join("\n")===info[P].children.join("\n")) return "이미 그 자리입니다.";
+    if(me.parent&&me.parent!==P){ const old=me.parent; ws[old]=rewriteIncludes(ws[old],info[old].children.filter(c=>c!==name)); }
+    ws[P]=rewriteIncludes(ws[P],next);
+    var msg=me.parent===P?name+" 의 순서를 바꿨습니다.":name+" → "+P+" 아래로 옮겼습니다.";
+  } else {
+    if(!me.parent) return "이미 최상위입니다.";
+    const old=me.parent; ws[old]=rewriteIncludes(ws[old],info[old].children.filter(c=>c!==name));
+    var msg=name+"을(를) 최상위로 뺐습니다.";
+  }
   refresh(); if(cur&&$("#ta").value!==ws[cur]) $("#ta").value=ws[cur]; paint(); touch();
-  return P?name+" → "+P+" 아래로 옮겼습니다.":name+"을(를) 최상위로 뺐습니다.";
+  return msg;
 }
 (function dnd(){
-  const dr=$("#drawer"); let drag=null;
-  dr.addEventListener("dragstart",e=>{const it=e.target.closest(".item");if(!it||!EXT.test(it.dataset.name)){e.preventDefault();return;}drag=it.dataset.name;e.dataTransfer.setData("text/plain",drag);e.dataTransfer.effectAllowed="move";});
-  dr.addEventListener("dragover",e=>{ if(!drag) return; e.preventDefault(); dr.querySelectorAll(".dropok").forEach(x=>x.classList.remove("dropok")); const it=e.target.closest(".item"); if(it&&EXT.test(it.dataset.name)&&it.dataset.name!==drag) it.classList.add("dropok"); });
-  dr.addEventListener("dragleave",e=>{ if(e.target===dr) dr.querySelectorAll(".dropok").forEach(x=>x.classList.remove("dropok")); });
-  dr.addEventListener("drop",e=>{ if(!drag) return; e.preventDefault(); const it=e.target.closest(".item"); const t=it&&EXT.test(it.dataset.name)?it.dataset.name:null;
-    const m=moveFile(drag,t); flash(m,6000); drag=null; });
-  dr.addEventListener("dragend",()=>{drag=null;dr.querySelectorAll(".dropok").forEach(x=>x.classList.remove("dropok"));});
+  const dr=$("#drawer"); let drag=null, st=null;
+  const clear=()=>{ dr.querySelectorAll(".dropok,.dropb,.dropa").forEach(x=>x.classList.remove("dropok","dropb","dropa")); const r=$("#dropRoot"); if(r) r.classList.remove("on"); };
+  const droppable=it=>it&&EXT.test(it.dataset.name)&&it.dataset.name!==drag;
+  dr.addEventListener("dragstart",e=>{const it=e.target.closest(".item");if(!it||!EXT.test(it.dataset.name)){e.preventDefault();return;}drag=it.dataset.name;e.dataTransfer.setData("text/plain",drag);e.dataTransfer.effectAllowed="move";setTimeout(()=>dr.classList.add("dragging"),0);});
+  dr.addEventListener("dragover",e=>{ if(!drag) return; e.preventDefault(); clear();
+    const it=e.target.closest(".item");
+    if(droppable(it)){
+      const r=it.getBoundingClientRect(), y=(e.clientY-r.top)/Math.max(r.height,1);
+      const pos=y<.28?"before":y>.72?"after":"in";
+      it.classList.add(pos==="before"?"dropb":pos==="after"?"dropa":"dropok"); st={target:it.dataset.name,pos};
+    } else if(it){ st=null; }                        // 자기 자신 위, 부속 파일 위
+    else { const r=$("#dropRoot"); if(r) r.classList.add("on"); st={target:null,pos:"root"}; }   // 빈 곳, 또는 '최상위로' 띠
+  });
+  dr.addEventListener("dragleave",e=>{ if(e.target===dr) clear(); });
+  dr.addEventListener("drop",e=>{ if(!drag) return; e.preventDefault(); const s=st; const d=drag; drag=null; st=null; clear(); dr.classList.remove("dragging");
+    if(!s) return; flash(moveFile(d,s.target,s.pos),6000); });
+  dr.addEventListener("dragend",()=>{drag=null;st=null;clear();dr.classList.remove("dragging");});
   dr.addEventListener("click",e=>{const it=e.target.closest(".item"); if(it) openFile(it.dataset.name);});
 })();
 
