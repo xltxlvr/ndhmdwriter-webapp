@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>ndhmd 웹 작업대</title>
+<style>
+:root{--bg:#f6f5f0;--fg:#1d1d1b;--dim:#6b6a63;--line:#dedcd2;--panel:#fffefb;--accent:#1f5f8b;--code:#efede4}
+@media (prefers-color-scheme:dark){:root{--bg:#1b1c1e;--fg:#e8e6df;--dim:#9a988f;--line:#34363a;--panel:#232427;--accent:#6fb1e0;--code:#2a2c30}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.7 -apple-system,"Segoe UI","Noto Sans KR","Malgun Gothic",sans-serif}
+main{max-width:46rem;margin:0 auto;padding:3rem 1.25rem 4rem}
+h1{font-size:1.8rem;margin:0 0 .3rem} h2{font-size:1.15rem;margin:2.2rem 0 .5rem}
+.sub{color:var(--dim);margin:0 0 1.6rem}
+.btn{display:inline-block;background:var(--accent);color:#fff;text-decoration:none;padding:.7rem 1.5rem;border-radius:8px;font-weight:600}
+@media (prefers-color-scheme:dark){.btn{color:#10202c}}
+.btn:hover{filter:brightness(1.08)} .ver{color:var(--dim);font-size:.9rem;margin-left:.8rem}
+ul{padding-left:1.2rem} li{margin:.25rem 0}
+pre{background:var(--code);border:1px solid var(--line);border-radius:8px;padding:.7rem .9rem;overflow-x:auto;font:.88rem/1.6 ui-monospace,"Cascadia Mono",Consolas,monospace}
+code{font:.9em ui-monospace,Consolas,monospace;background:var(--code);padding:.05em .3em;border-radius:4px} pre code{background:none;padding:0}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1.2rem 0 .6rem} @media (max-width:640px){.two{grid-template-columns:1fr}} .two .card{margin:0} .two h3{margin:.1rem 0 .3rem;font-size:1.05rem} .two p{margin:.3rem 0}
+.btn.ghost{background:none;color:var(--accent);border:2px solid var(--accent);padding:.55rem 1.3rem}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:1rem 1.2rem;margin:1rem 0}
+a{color:var(--accent)} .note{color:var(--dim);font-size:.92rem}
+</style>
+</head>
+<body>
+<main>
+  <h1>ndhmd 웹 작업대</h1>
+  <p class="sub">마크다운 원고를 브라우저에서 쓰고, .tex와 HTML로 바꾸고, 필요하면 내 컴퓨터의 LaTeX로 PDF까지 만드는 작업대입니다.</p>
+  <div class="two">
+    <div class="card">
+      <h3>로컬 TeX 없이 맛보기</h3>
+      <p>설치할 것이 없습니다. 원고를 쓰고 .tex와 HTML로 바꿔 보는 데까지 되고, PDF 컴파일은 빠져 있습니다.</p>
+      <p><a class="btn ghost" href="app/?lite" target="_blank" rel="noopener">맛보기로 열기</a></p>
+    </div>
+    <div class="card">
+      <h3>웹앱 열기</h3>
+      <p>PDF 컴파일과 PDF 보기, PDF와 원고 사이의 되짚기까지 쓰려면 이쪽입니다. 로컬 에이전트가 필요합니다(아래 안내).</p>
+      <p><a class="btn" href="app/" target="_blank" rel="noopener">웹앱 열기</a></p>
+    </div>
+  </div>
+  <p class="ver" style="margin:.2rem 0 0">버전 0.1 · 두 단추 모두 새 탭에서 열립니다. 맛보기에서 만든 작업은 전체 기능으로 열어도 그대로 이어집니다.</p>
+
+  <h2>브라우저만으로 되는 것 (맛보기도 같습니다)</h2>
+  <ul>
+    <li>원고 작성, 서랍(여러 파일을 <code>{{파일}}</code>로 묶는 구조), 목차, 점검</li>
+    <li>ndhmd4tex로 .tex 변환, ndhmd2html로 HTML 변환 — 변환기가 브라우저 안에서 돌아가므로 원고가 서버로 가지 않습니다</li>
+    <li>원고·그림·zip 올리기, zip으로 내보내기. 작업 내용은 이 브라우저에만 저장됩니다</li>
+  </ul>
+
+  <h2>PDF 컴파일은 로컬 에이전트가 합니다</h2>
+  <p>PDF는 내 컴퓨터에 설치된 TeX(<code>latexmk</code>)로 만듭니다. 웹앱이 .tex를 보내면 작은 로컬 에이전트가 컴파일해서 PDF를 돌려줍니다. 에이전트는 이 컴퓨터(127.0.0.1)에서만 듣고, 연결 코드와 허용한 출처가 맞는 요청만 받습니다.</p>
+  <div class="card">
+    <ol>
+      <li>Node.js 18 이상과 TeX Live(또는 MiKTeX)를 준비합니다.</li>
+      <li><a href="agent/ndhmd-agent.mjs" download>ndhmd-agent.mjs</a>를 내려받습니다. (<a href="agent/README.md">사용 설명서</a>)</li>
+      <li>아래 명령으로 시작합니다. 이 사이트의 주소가 이미 들어 있습니다.
+<pre><code id="cmd">node ndhmd-agent.mjs --origin …</code></pre></li>
+      <li>에이전트가 보여 주는 <b>연결 코드</b>를 웹앱의 설정 ▸ 로컬 에이전트에 넣고 연결합니다. 연결 코드는 처음 한 번 만들어져 저장됩니다.</li>
+    </ol>
+  </div>
+  <p class="note">Chrome과 Edge는 이 사이트가 내 컴퓨터에 연결하는 것을 처음 한 번 물어봅니다. 허용하면 됩니다. Safari처럼 막는 브라우저에서는 에이전트가 앱을 직접 내주는 방식(<code>--app</code>)을 쓰십시오. 자세한 내용은 사용 설명서에 있습니다.</p>
+
+  <h2>알아 둘 점</h2>
+  <ul>
+    <li>변환 엔진(Pyodide)과 PDF 보기(PDF.js)는 인터넷에서 받아 옵니다. 처음 한 번은 시간이 걸립니다.</li>
+    <li>URL로 준 그림은 아직 쓸 수 없습니다. 그림을 받아서 올리고 원고의 주소를 파일 이름으로 바꾸십시오.</li>
+    <li>브라우저 저장소를 지우면 작업 내용이 사라지니, 가끔 zip으로 내보내 두십시오.</li>
+  </ul>
+</main>
+<script>
+// 사이트 주소(경로 없는 출처)를 명령에 채워 넣는다
+document.getElementById("cmd").textContent="node ndhmd-agent.mjs --origin "+location.origin;
+</script>
+</body>
+</html>
