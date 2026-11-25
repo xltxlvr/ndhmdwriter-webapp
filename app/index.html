@@ -207,6 +207,7 @@ dialog .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
   </div>
   <div class="grp">
     <button id="bLint">마크업 점검</button>
+    <button id="bTools" title="보조 입력 · 약어 슬롯">도구 ▾</button>
     <button id="bXref" title="책 전체의 [#라벨] 참조와 [@인용]을 점검합니다(변환기를 부르지 않음)">상호참조 점검</button>
     <button id="bTex" class="primary">tex로 변환</button>
     <button id="bHtml" class="primary">HTML로 변환</button>
@@ -222,7 +223,7 @@ dialog .btns{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}
     <input id="filter" placeholder="이름 또는 #태그로 거르기" aria-label="서랍 거르기">
     <div id="drawer"></div>
     <div id="foot" class="foot"></div>
-    <div class="drawfoot"><button id="bDel" title="지금 열린 원고를 지웁니다">현재 파일 삭제</button><button id="bReset" title="예제 작업공간으로 되돌립니다">예제로 초기화</button></div>
+    <div class="drawfoot"><button id="bWs" title="새 책 저술 · 예제로 초기화 · 현재 파일 삭제">작업공간 ▾</button><button id="bDel" style="display:none">현재 파일 삭제</button><button id="bReset" style="display:none">예제로 초기화</button></div>
   </section>
   <section class="col" aria-label="편집창">
     <h2 id="curname">(열린 파일 없음)</h2>
@@ -817,6 +818,7 @@ async function ingest(sets){
   // 2. 경로를 정리하고 분류한다
   const cand=[], resItems=[];
   for(const s of all){
+    for(const i of s.items){ if(/(^|\/)\.ndhmd\/slots\.json$/.test(normPath(i.path)||"")){ try{ const o=JSON.parse(new TextDecoder().decode(await i.get())); const n=slotsLoadBook(o); if(n) report.notes.push("약어 슬롯 "+n+"개(이 책용)"); }catch(e){} } }
     let items=s.items.map(i=>({...i,path:normPath(i.path)})).filter(i=>{ if(!i.path) return false; if(JUNK(i.path)) return false; return true; });
     if(s.strip) stripCommon(items);
     for(const i of items){
@@ -880,7 +882,7 @@ addEventListener("drop",async e=>{
 });
 
 /* ----- 내보내기 ----- */
-function allFiles(){ const f=[]; Object.keys(ws).sort().forEach(n=>f.push({name:n,data:enc8.encode(ws[n])})); Object.keys(bin).sort().forEach(n=>f.push({name:n,data:bin[n]})); Object.keys(RS.user).sort().forEach(n=>f.push({name:"resources/"+n,data:enc8.encode(RS.user[n])})); return f; }
+function allFiles(){ const f=[]; Object.keys(ws).sort().forEach(n=>f.push({name:n,data:enc8.encode(ws[n])})); Object.keys(bin).sort().forEach(n=>f.push({name:n,data:bin[n]})); Object.keys(RS.user).sort().forEach(n=>f.push({name:"resources/"+n,data:enc8.encode(RS.user[n])})); { const sj=slotsBookJson(); if(sj) f.push({name:".ndhmd/slots.json",data:enc8.encode(sj)}); } return f; }
 const actions={
   impFiles:()=>$("#fileIn").click(), impFolder:()=>$("#dirIn").click(),
   expZip:()=>{ const f=allFiles(); if(!f.length){ flash("내보낼 파일이 없습니다."); return; } if(download("ndhmd-workspace-"+stamp()+".zip",makeZip(f))){ lastExport=Date.now(); dirtySince=false; renderFoot(); saveWs(); flash("zip으로 내보냈습니다("+f.length+"개).",6000); } },
@@ -930,7 +932,7 @@ window.ndhmdWeb={buildCompileRequest,get settings(){return settings;},
 $("#bReset").onclick=async()=>{
   const v=await ask("작업공간 전체를 예제로 바꿉니다. 지금 있는 원고와 그림이 모두 사라지고 되돌릴 수 없습니다.\n먼저 zip으로 내보내시겠습니까?",[{v:"cancel",label:"취소"},{v:"export",label:"먼저 내보내기"},{v:"go",label:"예제로 바꾸기"}]);
   if(v==="export"){ actions.expZip(); return; } if(v!=="go") return;
-  ws=JSON.parse(JSON.stringify(SAMPLE)); bin={}; renderImages(); openFile("main.md"); touch(); flash("예제 작업공간으로 되돌렸습니다.");
+  ws=JSON.parse(JSON.stringify(SAMPLE)); bin={}; if(typeof slotsClearBook==="function") slotsClearBook(); renderImages(); openFile("main.md"); touch(); flash("예제 작업공간으로 되돌렸습니다.");
 };
 $("#bDel").onclick=async()=>{
   if(!cur){ flash("열린 파일이 없습니다."); return; }
@@ -1201,7 +1203,7 @@ async function finishCompile(done,r,ui,full,root){
   if(done.error){ const n=document.createElement("div"); n.className="note"; n.textContent=done.error; el.insertBefore(n,ui.pre); }
   const det=document.createElement("details"); det.style.marginTop="10px"; det.open=!done.ok;
   det.innerHTML="<summary>컴파일러 출력 전체</summary>"; det.appendChild(ui.pre); el.appendChild(det);
-  if(!done.ok&&/minted|shell-escape|-shell-escape/i.test(full)){ const n=document.createElement("div"); n.className="note"; n.textContent="minted 같은 패키지는 shell-escape가 필요합니다. 에이전트를 --shell-escape on 으로 다시 시작하십시오(웹 페이지에서는 켤 수 없습니다)."; el.insertBefore(n,det); }
+  if(!done.ok&&/minted|shell-escape|-shell-escape/i.test(full)){ const n=document.createElement("div"); n.className="note"; n.textContent="shell escape가 필요한 경우입니다. 에이전트를 --shell-escape on 으로 다시 시작하십시오(웹 페이지에서는 켤 수 없습니다)."; el.insertBefore(n,det); }
   if(!done.ok) return;
   const [pr,sr]=await Promise.all([agentFetch("/job/"+done.id+"/pdf"),done.synctex?agentFetch("/job/"+done.id+"/synctex"):Promise.resolve(null)]);
   if(!pr.ok) throw new Error("PDF를 가져오지 못했습니다 ("+pr.status+")");
@@ -1486,6 +1488,101 @@ function renderXref(){
   document.querySelectorAll(".tabs button").forEach(b=>{ if(b.dataset.p==="pLab") b.addEventListener("click",()=>renderLabels(true)); if(b.dataset.p==="pXref") b.addEventListener("click",renderXref); });
   let t; ta.addEventListener("input",()=>{ clearTimeout(t); t=setTimeout(()=>renderLabels(false),450); });
   const bx=$("#bXref"); if(bx) bx.onclick=()=>{ showPane("pXref"); renderXref(); };
+})();
+
+/* ===== 보조 입력 · 약어 슬롯 · 새 책 저술 · 작업공간 메뉴 · 도구 메뉴 ===== */
+let AS={g:{},b:{},user:""};
+const asSave=(()=>{let t;return()=>{clearTimeout(t);t=setTimeout(async()=>{try{const db=await idb();db.transaction("kv","readwrite").objectStore("kv").put(AS,"assist");}catch(e){}},300);};})();
+async function asLoad(){ try{ const db=await idb(); const v=await new Promise(r=>{ const q=db.transaction("kv").objectStore("kv").get("assist"); q.onsuccess=()=>r(q.result||null); q.onerror=()=>r(null); }); if(v&&typeof v==="object") AS={g:v.g||{},b:v.b||{},user:v.user||""}; }catch(e){} }
+const SLOT_KEYS="1234567890", SLOT_GLOBAL="12345";
+const slotGet=k=>(SLOT_GLOBAL.includes(k)?AS.g:AS.b)[k]||"";
+function slotsClearBook(){ AS.b={}; asSave(); }
+function slotsBookJson(){ return Object.keys(AS.b).length?JSON.stringify(AS.b,null,1):null; }
+function slotsLoadBook(obj){ if(!obj||typeof obj!=="object") return 0; let n=0; for(const k of SLOT_KEYS) if(typeof obj[k]==="string"&&!SLOT_GLOBAL.includes(k)){ AS.b[k]=obj[k]; n++; } asSave(); return n; }
+/* ----- 슬롯 입력 ----- */
+const IS_MAC=/Mac|iPhone|iPad/.test(navigator.platform||"");
+function slotInsert(k){
+  const t=slotGet(k); if(!t){ flash("슬롯 "+k+"번이 비어 있습니다. (Ctrl+Alt+Y로 등록)",4000); return; }
+  const s=ta.selectionStart,e=ta.selectionEnd,sel=ta.value.slice(s,e);
+  let out="",cur=-1; for(const part of t.split(/(\{선택\}|\{커서\})/)){ if(part==="{선택}") out+=sel; else if(part==="{커서}"){ if(cur<0) cur=out.length; } else out+=part; }
+  ta.focus(); document.execCommand("insertText",false,out);
+  if(cur>=0){ const p=s+cur; ta.setSelectionRange(p,p); }
+}
+ta.addEventListener("keydown",e=>{
+  if(e.isComposing) return; const m=/^Digit([0-9])$/.exec(e.code); if(!m) return;
+  const ok=IS_MAC?(e.ctrlKey&&!e.altKey&&!e.metaKey):(e.altKey&&!e.ctrlKey&&!e.metaKey); if(!ok) return;
+  e.preventDefault(); slotInsert(m[1]);
+});
+/* ----- 슬롯 편집 대화상자 ----- */
+function slotsDialog(){
+  const dlg=document.createElement("dialog"); dlg.className="asdlg";
+  let h='<h3>약어 슬롯</h3><div class="note">편집창에서 <b>'+(IS_MAC?"Control":"Alt")+'+1 … 0</b>으로 넣습니다. 1~5번은 모든 책에서 같고(이 브라우저에 저장), 6~9·0번은 이 책에서만 씁니다(작업공간과 함께 내보냄). <code>{선택}</code> = 선택한 글, <code>{커서}</code> = 넣은 뒤 커서 자리 (예: 「{선택}」{커서})</div><div class="asrows">';
+  for(const k of SLOT_KEYS) h+='<label><span>'+k+'<small>'+(SLOT_GLOBAL.includes(k)?"전역":"이 책")+'</small></span><textarea rows="2" data-k="'+k+'"></textarea></label>';
+  h+='</div><div class="asbtns"><button data-a="cancel">취소</button><button data-a="save" class="primary">저장</button></div>';
+  dlg.innerHTML=h; document.body.appendChild(dlg);
+  dlg.querySelectorAll("textarea").forEach(x=>x.value=slotGet(x.dataset.k));
+  dlg.addEventListener("click",e=>{ const a=e.target.dataset&&e.target.dataset.a; if(a==="cancel") dlg.close(); if(a==="save"){ const g={},b={}; dlg.querySelectorAll("textarea").forEach(x=>{ if(x.value) (SLOT_GLOBAL.includes(x.dataset.k)?g:b)[x.dataset.k]=x.value; }); AS.g=g; AS.b=b; asSave(); touch(); dlg.close(); flash("약어 슬롯을 저장했습니다."); } });
+  dlg.addEventListener("close",()=>{ dlg.remove(); ta.focus(); });
+  dlg.showModal(); dlg.querySelector("textarea").focus();
+}
+/* ----- 보조 입력 (떠 있는 도구 창) ----- */
+const AC_SPECIAL="øǿæǽǣœß", AC_UP={"ø":"Ø","ǿ":"Ǿ","æ":"Æ","ǽ":"Ǽ","ǣ":"Ǣ","œ":"Œ"};
+const AC_DIA=[["악상 시르콩플렉스 ^","̂"],["악상 그라브 `","̀"],["악상 테귀 ´","́"],["트레마 ¨","̈"],["틸드 ~","̃"],["카론 ˇ","̌"],["마크롱 ¯","̄"],["브레베 ˘","̆"],["세디유 ¸","̧"],["링 ˚","̊"],["점(위) ˙","̇"],["오고넥 ˛","̨"]];
+const AC_BASES="aeiouyncszgltdrw";
+const AC_SYM=[["괄호","「」『』〈〉《》【】〔〕（）｛｝"],["문장부호","、。・·…⋯〜※々〆！？：；～ː‘’“”"],["기호","§¶©®™°′″×÷±≒≠≤≥≈∞–—¡¿❡†‡‼⁇⁈⁉‰№〶"],["화살표","→⇒⟹⇨➯←⇐⟸⇦"],["번호","⓪①②③④⑤⑥⑦⑧⑨⑩➊➋➌➍➎➏➐➑➒➓"],["통화","$€¥¢£₩"],["그림문자","○●◎☆★◇◆□■△▲▽▼◁◀▷▶♤♠♡♥♧♣☏☎☜☞♭♪♬㉿㈜"],["표정","☺☻☹"],["글머리","가㈎㉮ㄱ㈀㉠⑴①⒜ⓐⅰⅠ"]];
+const AC_IPA="ɐɑɒɓɔɕɖɗɘəɚɛɜɝɞɟɠɡɢɣɤɥɦɧɨɩɪɫɬɭɮɯɰɱɲɳɴɵɶɷɸɹɺɻɼɽɾɿʀʁʂʃʄʅʆʇʈʉʊʋʌʍʎʏʐʑʒʓʔʕʖʗʘʙʚʛʜʝʞʟʠʡʢʣʤʥʦʧʨʩʪʫʬʭʮʯŋł";
+let acPanel=null, acUpper=false;
+function acInsert(s){ if(!cur){ flash("먼저 원고를 여십시오."); return; } ta.focus(); document.execCommand("insertText",false,s); }
+function acBtn(ch,title){ const b=document.createElement("button"); b.className="acb"; b.textContent=ch; if(title) b.title=title; b.onmousedown=e=>e.preventDefault(); b.onclick=()=>acInsert(ch); return b; }
+function acFill(tab,body){
+  body.innerHTML="";
+  if(tab==="latin"){
+    const top=document.createElement("label"); top.className="acck"; const cb=document.createElement("input"); cb.type="checkbox"; cb.checked=acUpper; cb.onchange=()=>{ acUpper=cb.checked; acFill("latin",body); }; top.appendChild(cb); top.appendChild(document.createTextNode(" 대문자")); body.appendChild(top);
+    const sp=document.createElement("div"); sp.className="acrow"; [...AC_SPECIAL].forEach(c=>sp.appendChild(acBtn(acUpper&&AC_UP[c]?AC_UP[c]:c))); body.appendChild(sp);
+    for(const [nm,mk] of AC_DIA){ const r=document.createElement("div"); r.className="acrow"; const l=document.createElement("span"); l.className="aclab"; l.textContent=nm; r.appendChild(l); for(const b of AC_BASES){ const c=((acUpper?b.toUpperCase():b)+mk).normalize("NFC"); r.appendChild(acBtn(c)); } body.appendChild(r); }
+  } else if(tab==="sym"){
+    for(const [nm,chars] of AC_SYM){ const l=document.createElement("div"); l.className="acgrp"; l.textContent=nm; body.appendChild(l); const r=document.createElement("div"); r.className="acwrap"; [...chars].forEach(c=>r.appendChild(acBtn(c))); body.appendChild(r); }
+  } else if(tab==="ipa"){
+    const r=document.createElement("div"); r.className="acwrap"; [...AC_IPA].forEach(c=>r.appendChild(acBtn(c))); body.appendChild(r);
+  } else {
+    const row=document.createElement("div"); row.className="acrow"; const inp=document.createElement("input"); inp.placeholder="추가할 글자"; inp.style.flex="1"; const add=document.createElement("button"); add.textContent="추가";
+    const doAdd=()=>{ const cs=[...inp.value.trim()].filter(c=>!/\s/.test(c)&&!AS.user.includes(c)); if(cs.length){ AS.user+=cs.join(""); asSave(); } inp.value=""; acFill("user",body); };
+    add.onclick=doAdd; inp.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); doAdd(); } }; row.appendChild(inp); row.appendChild(add); body.appendChild(row);
+    const r=document.createElement("div"); r.className="acwrap"; [...AS.user].forEach(c=>{ const b=acBtn(c,"우클릭: 삭제"); b.oncontextmenu=e=>{ e.preventDefault(); AS.user=[...AS.user].filter(x=>x!==c).join(""); asSave(); acFill("user",body); }; r.appendChild(b); }); body.appendChild(r);
+    const n=document.createElement("div"); n.className="note"; n.textContent=AS.user?"우클릭하면 확인 없이 삭제합니다.":"직접 모은 글자를 여기에 둡니다(이 브라우저에 저장)."; body.appendChild(n);
+  }
+}
+function acToggle(){
+  if(acPanel){ acPanel.hidden=!acPanel.hidden; if(!acPanel.hidden) ta.focus(); return; }
+  const p=document.createElement("div"); p.className="acpanel"; p.innerHTML='<div class="achead"><b>보조 입력</b><button class="acx" title="닫기">×</button></div><div class="actabs"></div><div class="acbody"></div><div class="accp"><input placeholder="코드포인트 예: AC00, U+1F600, 0x2603"><button>삽입</button></div><div class="note">눌러서 커서 위치에 삽입 · 창은 열어 둔 채로 계속 쓸 수 있습니다</div>';
+  document.body.appendChild(p); acPanel=p;
+  const tabs=p.querySelector(".actabs"), body=p.querySelector(".acbody"); let tab="latin";
+  [["latin","라틴 확장"],["sym","문장부호·괄호"],["ipa","IPA 확장"],["user","사용자"]].forEach(([k,t])=>{ const b=document.createElement("button"); b.textContent=t; b.onmousedown=e=>{ if(k!=="user") e.preventDefault(); }; b.onclick=()=>{ tab=k; tabs.querySelectorAll("button").forEach(x=>x.classList.toggle("on",x===b)); acFill(k,body); }; if(k===tab) b.classList.add("on"); tabs.appendChild(b); });
+  acFill(tab,body);
+  p.querySelector(".acx").onclick=()=>{ p.hidden=true; ta.focus(); };
+  const cp=p.querySelector(".accp input"), cpb=p.querySelector(".accp button");
+  const go=()=>{ const m=/^(?:u\+|0x)?([0-9a-f]{1,6})$/i.exec(cp.value.trim()); const n=m?parseInt(m[1],16):-1; if(n<0||n>0x10FFFF||(n>=0xD800&&n<=0xDFFF)){ cp.classList.add("bad"); return; } cp.classList.remove("bad"); acInsert(String.fromCodePoint(n)); };
+  cpb.onclick=go; cp.onkeydown=e=>{ if(e.key==="Enter"){ e.preventDefault(); go(); } }; cp.oninput=()=>cp.classList.remove("bad");
+  let dx=0,dy=0,drag=false; const hd=p.querySelector(".achead");
+  hd.onmousedown=e=>{ if(e.target.tagName==="BUTTON") return; drag=true; const r=p.getBoundingClientRect(); dx=e.clientX-r.left; dy=e.clientY-r.top; e.preventDefault(); };
+  addEventListener("mousemove",e=>{ if(!drag) return; p.style.left=Math.max(0,Math.min(innerWidth-120,e.clientX-dx))+"px"; p.style.top=Math.max(0,Math.min(innerHeight-40,e.clientY-dy))+"px"; p.style.right="auto"; p.style.bottom="auto"; });
+  addEventListener("mouseup",()=>{ drag=false; });
+}
+/* ----- 새 책 저술 ----- */
+async function newBook(){
+  const v=await ask("작업공간을 완전히 비우고 빈 main.md 하나만 둔 새 책을 시작합니다. 지금 있는 원고와 그림이 모두 사라지고 되돌릴 수 없습니다.\n먼저 zip으로 내보내시겠습니까?",[{v:"cancel",label:"취소"},{v:"export",label:"먼저 내보내기"},{v:"go",label:"새 책 시작",primary:true}]);
+  if(v==="export"){ actions.expZip(); return; } if(v!=="go") return;
+  ws={"main.md":""}; bin={}; lastRun={}; slotsClearBook(); renderImages(); openFile("main.md"); touch(); ta.focus(); flash("새 책을 시작했습니다. 빈 main.md 하나만 있습니다.");
+}
+/* ----- 작업공간 메뉴(서랍 아래) · 도구 메뉴(위) ----- */
+(function(){
+  const s=document.createElement("style");
+  s.textContent=".acpanel{position:fixed;right:24px;bottom:56px;z-index:40;width:560px;max-width:96vw;background:#fff;border:1px solid #bbb;border-radius:9px;box-shadow:0 6px 24px rgba(0,0,0,.22);padding:8px 10px;font-size:13px}.acpanel[hidden]{display:none}.achead{display:flex;justify-content:space-between;align-items:center;cursor:move;padding-bottom:4px}.acx{border:0;background:none;font-size:18px;cursor:pointer}.actabs{display:flex;gap:4px;margin-bottom:6px}.actabs button{padding:2px 8px;border:1px solid #ccc;border-radius:5px;background:#f6f6f6}.actabs button.on{background:#1b5a8a;color:#fff;border-color:#1b5a8a}.acbody{max-height:340px;overflow:auto;padding:2px}.acrow{display:flex;gap:2px;align-items:center;margin:1px 0}.aclab{width:132px;font-size:11px;color:#666;flex:none}.acwrap{display:flex;flex-wrap:wrap;gap:2px}.acgrp{font-size:11px;color:#777;margin:5px 0 1px}.acb{min-width:26px;height:26px;padding:0 2px;border:1px solid #d5d5d5;border-radius:4px;background:#fafafa;font-size:15px;cursor:pointer}.acb:hover{background:#e6f0fa}.acck{display:block;margin-bottom:3px}.accp{display:flex;gap:6px;margin-top:6px}.accp input{flex:1}.accp input.bad{background:#fde3e0;border-color:#c0392b}.asdlg{border:1px solid #aaa;border-radius:10px;padding:14px 16px;width:min(560px,94vw)}.asdlg h3{margin:0 0 6px}.asrows{display:grid;gap:5px;margin:8px 0;max-height:52vh;overflow:auto}.asrows label{display:flex;gap:8px;align-items:flex-start}.asrows label>span{width:46px;flex:none;font-weight:600}.asrows small{display:block;font-weight:400;color:#888;font-size:11px}.asrows textarea{flex:1;font:inherit}.asbtns{display:flex;justify-content:flex-end;gap:8px}";
+  document.head.appendChild(s);
+  const bw=$("#bWs"); if(bw) bw.onclick=e=>{ e.stopPropagation(); const r=bw.getBoundingClientRect(); lbShowMenu(r.left,r.top-96,[{t:"새 책 저술…",f:newBook},{t:"예제로 초기화…",f:()=>$("#bReset").click()},"-",{t:"현재 파일 삭제…",f:()=>$("#bDel").click()}]); };
+  const bt=$("#bTools"); if(bt) bt.onclick=e=>{ e.stopPropagation(); const r=bt.getBoundingClientRect(); lbShowMenu(r.left,r.bottom+4,[{t:"보조 입력…   Ctrl+Alt+A",f:acToggle},{t:"약어 슬롯…   Ctrl+Alt+Y",f:slotsDialog}]); };
+  document.addEventListener("keydown",e=>{ if(!(e.ctrlKey&&e.altKey&&!e.metaKey&&!e.shiftKey)) return; if(e.code==="KeyA"){ e.preventDefault(); acToggle(); } else if(e.code==="KeyY"){ e.preventDefault(); slotsDialog(); } });
+  asLoad();
 })();
 
 /* ===== PDF 보기: PDF.js(CDN)로 쪽을 직접 그린다 — 클릭 좌표를 알아야 synctex 되짚기를 할 수 있다 ===== */
