@@ -54,3 +54,15 @@ node ndhmd-agent.mjs --app ../dist/index.html
 - `GET /job/<id>/pdf | synctex | log` — 결과 파일. 최근 `--keep`개만 남습니다.
 
 `latexmk`는 `-pdfxe`/`-pdflua`/`-pdf`, `-interaction=nonstopmode`, `-synctex=1`, `-file-line-error`로 실행합니다. 사용자의 `.latexmkrc`는 그대로 읽습니다.
+
+## URL 그림 받기 (`POST /fetch`, 0.2.0부터)
+
+원고에 `![설명](https://…/그림.png)` 처럼 URL로 준 그림이 있으면, PDF 컴파일 전에 웹 페이지가 에이전트에게 그 주소들을 받아 달라고 요청합니다. 브라우저는 CORS 때문에 남의 주소의 그림을 직접 받을 수 없기 때문입니다. 받은 그림은 `_images/<URL의 sha1 앞 16자><확장자>`로 작업공간에 놓이고, ndhmd4tex가 이 캐시를 그대로 알아봅니다(`--fetch-images` 불필요). HTML 변환은 영향이 없습니다.
+
+에이전트가 아무 주소나 받아 주면 위험하므로 다음을 지킵니다.
+
+- http/https만 받습니다. 사설·루프백·링크로컬 주소(10.x, 127.x, 169.254.x, 192.168.x, ::1 등)는 이름을 푼 결과까지 거부하고, 리다이렉트마다 다시 검사합니다.
+- 그림 형식(png, jpg, gif, webp, tif, bmp, pdf, eps, svg)만 받고, 파일당 20MB·응답 15초·전체 2분, 한 번에 60개까지입니다.
+- 다른 요청과 같이 연결 코드(토큰)와 Origin 검사를 거칩니다.
+
+변환기가 바로 쓸 수 있는 형식은 png, jpg, pdf, eps입니다. gif·webp·tif는 Pillow가 있어야 PNG로 바뀌고, svg는 변환기가 거부합니다.

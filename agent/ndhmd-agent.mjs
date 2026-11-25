@@ -15,9 +15,12 @@ import os from "node:os";
 import path from "node:path";
 import crypto from "node:crypto";
 import { spawn } from "node:child_process";
+import dns from "node:dns";
+import net from "node:net";
+import https from "node:https";
 import { fileURLToPath } from "node:url";
 
-const VERSION = "0.1.0";
+const VERSION = "0.2.0";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 
 /* ───────────── 설정 ───────────── */
@@ -108,6 +111,72 @@ function latexmkArgs(engine, shellEscape, texFile) {
 }
 
 /* ───────────── 프로세스 ───────────── */
+/* ───────────── URL 그림 내려받기(/fetch) ─────────────
+ * 브라우저는 CORS 때문에 남의 주소의 그림을 못 받는다. 에이전트가 대신 받아 주되,
+ * 사설·루프백 주소(내부망 정찰)는 거부하고, 그림 형식만, 크기·시간을 제한한다. */
+function isPrivateIP(ip) {
+  const v = net.isIP(ip);
+  if (v === 4) {
+    const [a, b, c] = ip.split(".").map(Number);
+    return a === 0 || a === 10 || a === 127 || a >= 224 || (a === 100 && b >= 64 && b <= 127) || (a === 169 && b === 254) ||
+      (a === 172 && b >= 16 && b <= 31) || (a === 192 && b === 168) || (a === 192 && b === 0 && c === 0) || (a === 198 && (b === 18 || b === 19));
+  }
+  if (v === 6) {
+    const x = ip.toLowerCase();
+    if (x === "::" || x === "::1") return true;
+    const m = /^::ffff:(\d+\.\d+\.\d+\.\d+)$/.exec(x); if (m) return isPrivateIP(m[1]);
+    return /^f[cd]/.test(x) || /^fe[89ab]/.test(x) || x.startsWith("ff");
+  }
+  return true;
+}
+function safeLookup(host, opts, cb) {
+  dns.lookup(host, { all: true }, (err, addrs) => {
+    if (err) return cb(err);
+    if (!addrs.length || addrs.some(a => isPrivateIP(a.address))) return cb(Object.assign(new Error("사설·내부 주소는 받지 않습니다"), { code: "EPRIVATE" }));
+    const a = addrs[0]; if (opts && opts.all) return cb(null, [a]); cb(null, a.address, a.family);
+  });
+}
+function sniffImage(b) {
+  const h = (n) => b.subarray(0, n);
+  if (b.length >= 8 && h(8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))) return ".png";
+  if (b.length >= 3 && b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return ".jpg";
+  if (b.length >= 4 && h(4).toString("latin1") === "GIF8") return ".gif";
+  if (b.length >= 12 && h(4).toString("latin1") === "RIFF" && b.subarray(8, 12).toString("latin1") === "WEBP") return ".webp";
+  if (b.length >= 4 && h(4).toString("latin1") === "%PDF") return ".pdf";
+  if (b.length >= 4 && h(4).toString("latin1") === "%!PS") return ".eps";
+  if (b.length >= 4 && (h(4).equals(Buffer.from([0x49, 0x49, 0x2a, 0x00])) || h(4).equals(Buffer.from([0x4d, 0x4d, 0x00, 0x2a])))) return ".tif";
+  if (b.length >= 2 && h(2).toString("latin1") === "BM") return ".bmp";
+  const t = b.subarray(0, 512).toString("utf8").trimStart(); if (/^(<\?xml[\s\S]*)?<svg[\s>]/i.test(t)) return ".svg";
+  return null;
+}
+async function fetchOne(url0, limit, deadline) {
+  let url = url0;
+  for (let hop = 0; hop < 6; hop++) {
+    let u; try { u = new URL(url); } catch { throw new Error("주소가 올바르지 않습니다"); }
+    if (u.protocol !== "http:" && u.protocol !== "https:") throw new Error("http/https 주소만 받습니다");
+    if (net.isIP(u.hostname.replace(/^\[|\]$/g, "")) && isPrivateIP(u.hostname.replace(/^\[|\]$/g, ""))) throw new Error("사설·내부 주소는 받지 않습니다");
+    const r = await new Promise((resolve, reject) => {
+      const mod = u.protocol === "https:" ? https : http;
+      const req = mod.request(u, { method: "GET", lookup: safeLookup, agent: false, headers: { "User-Agent": "ndhmd-agent/" + VERSION, Accept: "image/*,application/pdf;q=0.8,*/*;q=0.1" } }, resp => {
+        const code = resp.statusCode || 0;
+        if (code >= 300 && code < 400 && resp.headers.location) { resp.resume(); return resolve({ redirect: new URL(resp.headers.location, u).href }); }
+        if (code !== 200) { resp.resume(); return reject(new Error("HTTP " + code)); }
+        const chunks = []; let n = 0;
+        resp.on("data", c => { n += c.length; if (n > limit) { req.destroy(new Error("파일이 너무 큽니다(" + Math.round(limit / 1048576) + "MB 상한)")); return; } chunks.push(c); });
+        resp.on("end", () => resolve({ body: Buffer.concat(chunks) }));
+        resp.on("error", reject);
+      });
+      req.setTimeout(15000, () => req.destroy(new Error("응답이 없습니다(시간 초과)")));
+      const left = deadline - Date.now(); if (left <= 0) return reject(new Error("전체 시간 제한을 넘었습니다"));
+      const t = setTimeout(() => req.destroy(new Error("전체 시간 제한을 넘었습니다")), left); req.on("close", () => clearTimeout(t));
+      req.on("error", e => reject(e.code === "EPRIVATE" ? new Error("사설·내부 주소는 받지 않습니다") : e)); req.end();
+    });
+    if (r.redirect) { url = r.redirect; continue; }
+    const ext = sniffImage(r.body); if (!ext) throw new Error("그림 형식이 아닙니다");
+    return { body: r.body, ext };
+  }
+  throw new Error("리다이렉트가 너무 많습니다");
+}
 function killTree(child) {
   if (!child || child.exitCode !== null || !child.pid) return;
   try {
@@ -182,13 +251,14 @@ async function main() {
         if (!authed(req)) return send(res, 200, { agent: "ndhmd-agent", version: VERSION, needsToken: true });
         const t = await tools();
         return send(res, 200, { agent: "ndhmd-agent", version: VERSION, needsToken: false, platform: process.platform, latexmk: t.latexmk, engines: t.engines,
-          shellEscape: opt.shellEscape, timeout: opt.timeout, maxMB: opt.maxMB, busy: !!running });
+          features: ["fetch"], shellEscape: opt.shellEscape, timeout: opt.timeout, maxMB: opt.maxMB, busy: !!running });
       }
 
       if (p === "/favicon.ico") { res.writeHead(204); return res.end(); }
       if (!authed(req)) return send(res, 401, { error: "token", message: "연결 코드가 없거나 틀렸습니다." });
 
       if (req.method === "POST" && p === "/compile") return await handleCompile(req, res);
+      if (req.method === "POST" && p === "/fetch") return await handleFetch(req, res);
 
       const m = /^\/job\/([0-9a-f]{12})\/(pdf|synctex|log)$/.exec(p);
       if (req.method === "GET" && m) {
@@ -209,6 +279,21 @@ async function main() {
     const chunks = []; let n = 0;
     for await (const c of req) { n += c.length; if (n > limit) throw Object.assign(new Error("요청이 너무 큽니다(" + opt.maxMB + "MB 상한)."), { code: 413 }); chunks.push(c); }
     return Buffer.concat(chunks);
+  }
+
+  async function handleFetch(req, res) {
+    let body;
+    try { body = JSON.parse((await readBody(req, 1048576)).toString("utf8")); }
+    catch (e) { return send(res, e.code || 400, { error: "body", message: e.code ? e.message : "JSON 을 읽지 못했습니다." }); }
+    const urls = body && Array.isArray(body.urls) ? body.urls : null;
+    if (!urls || !urls.length || urls.length > 60 || urls.some(u => typeof u !== "string" || !u || u.length > 2000)) return send(res, 400, { error: "request", message: "urls 는 2000자 이하 문자열 60개 이내여야 합니다." });
+    const deadline = Date.now() + 120000, out = new Array(urls.length), LIMIT = 20 * 1048576;
+    let next = 0;
+    const worker = async () => { for (;;) { const i = next++; if (i >= urls.length) return; const url = urls[i];
+      try { const r = await fetchOne(url, LIMIT, deadline); out[i] = { url, ok: true, name: crypto.createHash("sha1").update(url, "utf8").digest("hex").slice(0, 16) + r.ext, b64: r.body.toString("base64") }; }
+      catch (e) { out[i] = { url, ok: false, error: String(e && e.message || e) }; } } };
+    await Promise.all([worker(), worker(), worker(), worker()]);
+    return send(res, 200, { results: out });
   }
 
   async function handleCompile(req, res) {

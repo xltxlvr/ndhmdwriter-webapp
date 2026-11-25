@@ -40,7 +40,7 @@ a{color:var(--accent)} .note{color:var(--dim);font-size:.92rem}
       <p><a class="btn" href="app/" target="_blank" rel="noopener">웹앱 열기</a></p>
     </div>
   </div>
-  <p class="ver" style="margin:.2rem 0 0">버전 (시험판) 0.3 · 두 단추 모두 새 탭에서 열립니다. 맛보기에서 만든 작업은 전체 기능으로 열어도 그대로 이어집니다.</p>
+  <p class="ver" style="margin:.2rem 0 0">버전 0.1 · 두 단추 모두 새 탭에서 열립니다. 맛보기에서 만든 작업은 전체 기능으로 열어도 그대로 이어집니다.</p>
 
   <h2>브라우저만으로 되는 것 (맛보기도 같습니다)</h2>
   <ul>
@@ -50,7 +50,7 @@ a{color:var(--accent)} .note{color:var(--dim);font-size:.92rem}
   </ul>
 
   <h2>PDF 컴파일은 로컬 에이전트가 합니다</h2>
-  <p>PDF는 내 컴퓨터에 설치된 TeX(<code>latexmk</code>)으로 만듭니다. 웹앱이 .tex을 보내면 작은 로컬 에이전트가 컴파일해서 PDF를 돌려줍니다. 에이전트는 이 컴퓨터(127.0.0.1)에서만 듣고, 연결 코드와 허용한 출처가 맞는 요청만 받습니다.</p>
+  <p>PDF는 내 컴퓨터에 설치된 TeX(<code>latexmk</code>)로 만듭니다. 웹앱이 .tex을 보내면 작은 로컬 에이전트가 컴파일해서 PDF를 돌려줍니다. 에이전트는 이 컴퓨터(127.0.0.1)에서만 듣고, 연결 코드와 허용한 출처가 맞는 요청만 받습니다.</p>
   <div class="card">
     <ol>
       <li>Node.js 18 이상과 TeX Live(또는 MiKTeX)를 준비합니다.</li>
@@ -65,7 +65,7 @@ a{color:var(--accent)} .note{color:var(--dim);font-size:.92rem}
   <h2>알아 둘 점</h2>
   <ul>
     <li>변환 엔진(Pyodide)과 PDF 보기(PDF.js)는 인터넷에서 받아 옵니다. 처음 한 번은 시간이 걸립니다.</li>
-    <li>URL로 준 그림은 아직 쓸 수 없습니다. 그림을 받아서 올리고 원고의 주소를 파일 이름으로 바꾸십시오.</li>
+    <li>URL로 준 그림은 PDF를 만들 때 로컬 에이전트(0.2 이상)가 대신 내려받습니다. 맛보기에는 에이전트가 없으므로, 그림을 받아서 올리고 원고의 주소를 파일 이름으로 바꾸십시오. HTML 변환에서는 URL 그림이 그대로 보입니다.</li>
     <li>브라우저 저장소를 지우면 작업 내용이 사라지니, 가끔 zip으로 내보내 두십시오.</li>
   </ul>
 </main>
