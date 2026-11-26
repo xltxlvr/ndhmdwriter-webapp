@@ -1,5 +1,5 @@
 {
- "version": "35504024b20b",
+ "version": "ffa386ff535a",
  "files": [
   {
    "path": "ABOUT.md",
@@ -15,7 +15,7 @@
   },
   {
    "path": "example/lshort-ko_example.yaml",
-   "size": 1204
+   "size": 1124
   },
   {
    "path": "extra/amsthm.yaml",
@@ -27,7 +27,7 @@
   },
   {
    "path": "extra/postit.yaml",
-   "size": 1001
+   "size": 677
   },
   {
    "path": "kotex/articlekotex.nmd",
