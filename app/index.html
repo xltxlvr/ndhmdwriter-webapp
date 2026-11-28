@@ -729,10 +729,19 @@ function setRun(r){
 }
 function mimeOf(n){ const e=(n.match(/\.([^.]+)$/)||[])[1]; return ({png:"image/png",jpg:"image/jpeg",jpeg:"image/jpeg",gif:"image/gif",webp:"image/webp",svg:"image/svg+xml",bmp:"image/bmp",pdf:"application/pdf"})[(e||"").toLowerCase()]||"application/octet-stream"; }
 function b64(u8){ let s=""; for(let i=0;i<u8.length;i+=0x8000) s+=String.fromCharCode.apply(null,u8.subarray(i,i+0x8000)); return btoa(s); }
+/* 그림 경로를 작업공간의 bin 열쇠로 푼다. {{}}로 끌어온 하위 폴더 원고는 그림 경로가 그 원고 폴더 기준이어서
+   "../img/a.png"나 "a.png"처럼 나오므로, 정확히 맞는 것이 없으면 ./ ../를 걷어낸 꼴로 끝이 맞는 그림을 찾는다(가장 얕은 것). */
+function resolveBin(src){
+  let key; try{ key=decodeURIComponent(src); }catch(e){ return null; }
+  key=key.replace(/^\.\//,""); if(bin[key]) return key;
+  const bare=key.replace(/^(\.\.?\/)+/,""); if(bin[bare]) return bare;
+  let best=null; for(const k of Object.keys(bin)){ if(k.endsWith("/"+bare)&&(best===null||k.length<best.length)) best=k; }
+  return best;
+}
 function inlineImages(h){
   return h.replace(/(<img\b[^>]*?\bsrc=")([^"]+)(")/g,(m,a,src,c)=>{
-    let key; try{ key=decodeURIComponent(src).replace(/^\.\//,""); }catch(e){ return m; }
-    const v=bin[key]; return v&&!/\.pdf$/i.test(key)?a+"data:"+mimeOf(key)+";base64,"+b64(v)+c:m; });
+    if(/^(data:|https?:)/i.test(src)) return m;
+    const key=resolveBin(src); return key&&!/\.pdf$/i.test(key)?a+"data:"+mimeOf(key)+";base64,"+b64(bin[key])+c:m; });
 }
 
 /* 안에서 쓰는 확인 창(브라우저 기본 confirm은 막힌 환경이 있어 직접 만든다) */
@@ -969,6 +978,7 @@ def reset(files):
         q = '/work/' + e
         shutil.rmtree(q) if os.path.isdir(q) else os.remove(q)
     for k, v in json.loads(files).items():
+        os.makedirs(os.path.dirname('/work/' + k), exist_ok=True)
         with open('/work/' + k, 'w', encoding='utf-8') as f: f.write(v)
 def run_tool(script, args):
     os.chdir('/work'); out = io.StringIO(); old = (sys.stdout, sys.stderr, sys.argv); code = 0
